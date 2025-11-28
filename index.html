@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Minhoca</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        h1 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 400px;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        #gameCanvas {
+            border: 2px solid #333;
+            background-color: #000;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            padding: 8px 15px;
+            font-size: 16px;
+            background-color: #f0f0f0;
+            color: #333;
+            border: 1px solid #ccc;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #e0e0e0;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            max-width: 400px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .game-over {
+            display: none;
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border: 1px solid #ccc;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Jogo da Minhoca</h1>
+    
+    <div class="game-info">
+        <div>Pontuação: <span id="score">0</span></div>
+        <div>Recorde: <span id="highScore">0</span></div>
+    </div>
+    
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    
+    <div class="controls">
+        <button id="startBtn">Iniciar</button>
+        <button id="pauseBtn">Pausar</button>
+        <button id="restartBtn">Reiniciar</button>
+    </div>
+    
+    <div class="instructions">
+        <p>Use as teclas de seta para controlar a minhoca. Coma a comida (vermelha) para crescer e ganhar pontos.</p>
+    </div>
+    
+    <div id="gameOver" class="game-over">
+        <h2>Fim de Jogo!</h2>
+        <p>Sua pontuação: <span id="finalScore">0</span></p>
+        <button id="playAgainBtn">Jogar Novamente</button>
+    </div>
+
+    <script>
+        // Elementos do DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const highScoreElement = document.getElementById('highScore');
+        const finalScoreElement = document.getElementById('finalScore');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const gameOverElement = document.getElementById('gameOver');
+
+        // Configurações do jogo
+        const gridSize = 20;
+        const tileCount = canvas.width / gridSize;
+        
+        // Variáveis do jogo
+        let snake = [];
+        let food = {};
+        let dx = 0;
+        let dy = 0;
+        let score = 0;
+        let highScore = localStorage.getItem('snakeHighScore') || 0;
+        let gameRunning = false;
+        let gamePaused = false;
+        let gameLoop;
+
+        // Inicializar o jogo
+        function initGame() {
+            // Inicializar a cobra
+            snake = [
+                {x: 10, y: 10}
+            ];
+            
+            // Gerar comida
+            generateFood();
+            
+            // Resetar direção e pontuação
+            dx = 0;
+            dy = 0;
+            score = 0;
+            scoreElement.textContent = score;
+            highScoreElement.textContent = highScore;
+            
+            // Esconder tela de game over
+            gameOverElement.style.display = 'none';
+            
+            // Desenhar o estado inicial
+            draw();
+        }
+
+        // Gerar comida em posição aleatória
+        function generateFood() {
+            food = {
+                x: Math.floor(Math.random() * tileCount),
+                y: Math.floor(Math.random() * tileCount)
+            };
+            
+            // Verificar se a comida não apareceu em cima da cobra
+            for (let segment of snake) {
+                if (segment.x === food.x && segment.y === food.y) {
+                    generateFood();
+                    return;
+                }
+            }
+        }
+
+        // Desenhar o jogo
+        function draw() {
+            // Limpar o canvas
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenhar a cobra
+            ctx.fillStyle = 'lime';
+            for (let segment of snake) {
+                ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+            }
+            
+            // Desenhar a comida
+            ctx.fillStyle = 'red';
+            ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+        }
+
+        // Atualizar o estado do jogo
+        function update() {
+            if (!gameRunning || gamePaused) return;
+            
+            // Calcular nova posição da cabeça
+            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            
+            // Verificar se a cobra está se movendo
+            if (dx === 0 && dy === 0) {
+                // Se não está se movendo, apenas desenhar e sair
+                draw();
+                return;
+            }
+            
+            // Verificar colisão com as paredes
+            if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+                gameOver();
+                return;
+            }
+            
+            // Verificar colisão com o próprio corpo (começando do índice 1 para ignorar a cabeça)
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === head.x && snake[i].y === head.y) {
+                    gameOver();
+                    return;
+                }
+            }
+            
+            // Adicionar nova cabeça
+            snake.unshift(head);
+            
+            // Verificar se comeu a comida
+            if (head.x === food.x && head.y === food.y) {
+                // Aumentar pontuação
+                score += 10;
+                scoreElement.textContent = score;
+                
+                // Atualizar recorde se necessário
+                if (score > highScore) {
+                    highScore = score;
+                    highScoreElement.textContent = highScore;
+                    localStorage.setItem('snakeHighScore', highScore);
+                }
+                
+                // Gerar nova comida
+                generateFood();
+            } else {
+                // Remover cauda se não comeu
+                snake.pop();
+            }
+            
+            // Desenhar o jogo
+            draw();
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            clearInterval(gameLoop);
+            
+            // Mostrar tela de game over
+            finalScoreElement.textContent = score;
+            gameOverElement.style.display = 'block';
+        }
+
+        // Controlar direção com teclado
+        function changeDirection(event) {
+            if (!gameRunning || gamePaused) return;
+            
+            // Tecla para cima
+            if (event.key === 'ArrowUp' && dy !== 1) {
+                dx = 0;
+                dy = -1;
+            }
+            // Tecla para baixo
+            else if (event.key === 'ArrowDown' && dy !== -1) {
+                dx = 0;
+                dy = 1;
+            }
+            // Tecla para esquerda
+            else if (event.key === 'ArrowLeft' && dx !== 1) {
+                dx = -1;
+                dy = 0;
+            }
+            // Tecla para direita
+            else if (event.key === 'ArrowRight' && dx !== -1) {
+                dx = 1;
+                dy = 0;
+            }
+            // Tecla de espaço (pausar/continuar)
+            else if (event.key === ' ') {
+                togglePause();
+            }
+        }
+
+        // Iniciar o jogo
+        function startGame() {
+            if (gameRunning) return;
+            
+            gameRunning = true;
+            gamePaused = false;
+            pauseBtn.textContent = 'Pausar';
+            
+            // Iniciar o loop do jogo
+            gameLoop = setInterval(update, 150);
+        }
+
+        // Pausar/continuar o jogo
+        function togglePause() {
+            if (!gameRunning) return;
+            
+            gamePaused = !gamePaused;
+            pauseBtn.textContent = gamePaused ? 'Continuar' : 'Pausar';
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', togglePause);
+        restartBtn.addEventListener('click', () => {
+            clearInterval(gameLoop);
+            gameRunning = false;
+            initGame();
+        });
+        playAgainBtn.addEventListener('click', () => {
+            initGame();
+            startGame();
+        });
+        document.addEventListener('keydown', changeDirection);
+
+        // Inicializar o jogo ao carregar a página
+        window.onload = initGame;
+    </script>
+</body>
+</html>
